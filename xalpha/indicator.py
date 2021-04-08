@@ -7,8 +7,9 @@ import pandas as pd
 from pyecharts import options as opts
 from pyecharts.charts import Kline, Line, Bar, Grid
 from pyecharts.commons.utils import JsCode
+from bs4 import BeautifulSoup as bs
 
-from xalpha.cons import line_opts, opendate, yesterdayobj, sqrt_days_in_year
+from xalpha.cons import line_opts, opendate, yesterdayobj, sqrt_days_in_year, rget
 
 
 def _upcount(ls):
@@ -32,7 +33,16 @@ class indicator:
     Make sure first run obj.bcmkset() before you want to use functions in this class.
     """
 
-    def bcmkset(self, infoobj, start=None, riskfree=0.0371724, name="基金组合"):
+    def fetch_treasure_bond_rate(self):
+        res = rget('https://cn.investing.com/rates-bonds/china-1-year-bond-yield')
+        if res.status_code != 200:
+            raise Exception('fetch risk free rate failed')
+            return
+
+        soup = bs(res.content, features='lxml')
+        self.riskfree = float(soup.findAll('input')[1].attrs['value']) / 100
+
+    def bcmkset(self, infoobj, start=None, riskfree=None, name="基金组合"):
         """
         Once you want to utilize the indicator tool box for analysis, first run bcmkset function to set
         the benchmark, otherwise most of the functions would raise error.
@@ -51,10 +61,12 @@ class indicator:
         elif isinstance(start, str):
             self.start = pd.to_datetime(
                 start, format="%Y-%m-%d"
-            )  # pd.Timestamp.strptime(start, "%Y-%m-%d")
+            )
         self.benchmark = infoobj
 
-        self.riskfree = riskfree
+        if riskfree is not None:
+            self.riskfree = riskfree
+
         self.bmprice = self.benchmark.price[self.benchmark.price["date"] >= self.start]
         self.price = self.price[self.price["date"] >= self.start]
         self.bmprice = self.bmprice[self.bmprice["date"].isin(self.price["date"])]
@@ -108,8 +120,8 @@ class indicator:
         """
         datediff = (price[price["date"] <= date].iloc[-1].date - start).days
         totreturn = (
-            price[price["date"] <= date].iloc[-1].netvalue - price.iloc[0].netvalue
-        ) / price.iloc[0].netvalue
+            price[price["date"] <= date].iloc[-1].totvalue - price.iloc[0].totvalue
+        ) / price.iloc[0].totvalue
         return round((1 + totreturn) ** (365 / datediff) - 1, 4)
 
     def total_annualized_returns(self, date=yesterdayobj()):

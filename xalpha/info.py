@@ -442,7 +442,10 @@ class basicinfo(indicator):
         print("fund purchase fee: %s%%" % self.rate)
 
     def __repr__(self):
-        return self.name
+        diff = (self.price.iloc[-1].date - self.price.iloc[0].date).days
+        years = diff // 365
+        days = diff % 365
+        return self.name + ', 运行时长: {}年{}天'.format(years, days)
 
     def save(self, path, form=None, option="r", delta=None):
         """
@@ -577,6 +580,8 @@ class fundinfo(basicinfo):
         if self._page.text[:800].find("Data_millionCopiesIncome") >= 0:
             raise FundTypeError("This code seems to be a mfund, use mfundinfo instead")
 
+        self.fetch_treasure_bond_rate()
+
         l = re.match(
             r"[\s\S]*Data_netWorthTrend = ([^;]*);[\s\S]*", self._page.text
         ).groups()[0]
@@ -623,7 +628,8 @@ class fundinfo(basicinfo):
 
         self.rate = rate
         # shengou rate in tiantianjijin, daeshengou rate discount is not considered
-        self.name = name  # the name of the fund
+        self.name = name
+        self.start = infodict['date'][0]
         df = pd.DataFrame(data=infodict)
         df = df[df["date"].isin(opendate)]
         df = df.reset_index(drop=True)

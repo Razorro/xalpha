@@ -177,12 +177,7 @@ class indicator:
     @staticmethod
     def ratedaily(price, date=yesterdayobj()):
         partp = price[price["date"] <= date]
-        return list(partp["netvalue"].pct_change())[1:]
-        # return [
-        #     (partp.iloc[i + 1].netvalue - partp.iloc[i].netvalue)
-        #     / partp.iloc[i].netvalue
-        #     for i in range(len(partp) - 1)
-        # ]
+        return list(partp["totvalue"].pct_change())[1:]
 
     @staticmethod
     def volatility(price, date=yesterdayobj()):

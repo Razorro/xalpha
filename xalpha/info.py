@@ -2,7 +2,7 @@
 """
 modules of info class, including cashinfo, indexinfo and fundinfo class
 """
-
+import datetime
 import os
 import csv
 import datetime as dt
@@ -32,7 +32,7 @@ from xalpha.cons import (
 from xalpha.exceptions import FundTypeError, TradeBehaviorError, ParserFailure
 from xalpha.indicator import indicator
 
-_warnmess = "Something weird on redem fee, please adjust self.segment by hand"
+_warnmess = "Something weird on redeem fee, please adjust self.segment by hand"
 logger = logging.getLogger(__name__)
 
 
@@ -316,6 +316,7 @@ class basicinfo(indicator):
         round_label=0,
         dividend_label=0,
         value_label=0,
+        latest_manager=True,
     ):
         # 增量 IO 的逻辑都由 basicinfo 类来处理，对于具体的子类，只需实现_save_form 和 _fetch_form 以及 update 函数即可
         self.code = code
@@ -326,6 +327,7 @@ class basicinfo(indicator):
         self.specialdate = []
         self.fenhongdate = []
         self.zhesuandate = []
+        self.latest_manager = latest_manager
 
         # compatible with new ``xa.set_backend()`` API
         import xalpha.universal as xu
@@ -531,6 +533,7 @@ class fundinfo(basicinfo):
         path="",
         form="csv",
         priceonly=False,
+        latest_manager=True,
     ):
         if round_label == 1 or (code in droplist):
             label = 1  # the scheme of round down on share purchase
@@ -559,6 +562,7 @@ class fundinfo(basicinfo):
             form=form,
             round_label=label,
             dividend_label=dividend_label,
+            latest_manager=latest_manager,
         )
 
         self.special = self.price[self.price["comment"] != 0]
@@ -574,6 +578,7 @@ class fundinfo(basicinfo):
         if self.code.startswith("96"):
             self._hkfund_init()  # 中港互认基金处理
             return
+
         self._page = rget(self._url)
         if self._page.status_code == 404:
             raise ParserFailure("Unrecognized fund, please check fund code you input.")
@@ -582,19 +587,15 @@ class fundinfo(basicinfo):
 
         self.fetch_treasure_bond_rate()
 
-        l = re.match(
-            r"[\s\S]*Data_netWorthTrend = ([^;]*);[\s\S]*", self._page.text
-        ).groups()[0]
+        l = re.match(r"[\s\S]*Data_netWorthTrend = ([^;]*);[\s\S]*", self._page.text).groups()[0]
         l = l.replace("null", "None")  # 暂未发现基金净值有 null 的基金，若有，其他地方也很可能出问题！
         l = eval(l)
-        ltot = re.match(
-            r"[\s\S]*Data_ACWorthTrend = ([^;]*);[\s\S]*", self._page.text
-        ).groups()[
-            0
-        ]  # .* doesn't match \n
-        ltot = ltot.replace("null", "None")  ## 096001 总值数据中有 null！
+
+        ltot = re.match(r"[\s\S]*Data_ACWorthTrend = ([^;]*);[\s\S]*", self._page.text).groups()[0]
+        ltot = ltot.replace("null", "None")  # 096001 总值数据中有 null！
         ltot = eval(ltot)
-        ## timestamp transform tzinfo must be taken into consideration
+
+        # timestamp transform tzinfo must be taken into consideration
         tz_bj = dt.timezone(dt.timedelta(hours=8))
         infodict = {
             "date": [
@@ -627,7 +628,6 @@ class fundinfo(basicinfo):
         )
 
         self.rate = rate
-        # shengou rate in tiantianjijin, daeshengou rate discount is not considered
         self.name = name
         self.start = infodict['date'][0]
         df = pd.DataFrame(data=infodict)
@@ -639,6 +639,17 @@ class fundinfo(basicinfo):
         # deal with the redemption fee attrs finally
         if not self.priceonly:
             self._feepreprocess()
+
+        if self.latest_manager:
+            query_url = f'http://fundf10.eastmoney.com/jjjl_{self.code}.html'
+            r = rget(query_url)
+            if r.status_code != 200:
+                print('fetch manager info failed')
+            else:
+                soup = BeautifulSoup(r.content, features='lxml')
+                latest_date = datetime.datetime.fromisoformat(soup.findAll('tbody')[1].tr.td.string)
+                self.price = self.price[self.price['date'] >= latest_date]
+                self.start = self.price['date'].iloc[0]
 
     def _feepreprocess(self):
         """

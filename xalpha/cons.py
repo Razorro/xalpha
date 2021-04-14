@@ -27,6 +27,9 @@ from scipy import optimize
 from xalpha import __path__
 from .exceptions import HttpStatusError
 
+import akshare as ak
+ak.bond_zh_us_rate()
+
 logger = logging.getLogger(__name__)
 
 # date obj of today
@@ -636,6 +639,15 @@ def _float(n):
 
 def reconnect(tries=5, timeout=12):
     def robustify(f):
+        default_header = {
+            'accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,'
+                      'application/signed-exchange;v=b3;q=0.9',
+            'accept-encoding': 'gzip, deflate, br',
+            'accept-language': 'zh-CN,zh;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6,ja;q=0.5',
+            'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+                          'Chrome/89.0.4389.114 Safari/537.36 Edg/89.0.774.76',
+        }
+
         @wraps(f)
         def wrapper(*args, **kws):
             import xalpha.provider as xp
@@ -648,33 +660,27 @@ def reconnect(tries=5, timeout=12):
                 url = args[0]
             else:
                 url = kws.get("url", "")
+
             headers = kws.get("headers", {})
-            if (not headers.get("user-agent", None)) and (
-                not headers.get("User-Agent", None)
-            ):
-                headers["user-agent"] = "Mozilla/5.0"
+            if len(headers) == 0:
+                headers.update(default_header)
+
             kws["headers"] = headers
             for count in range(tries):
                 try:
-                    logger.debug(
-                        "Fetching url: %s . Inside function `%s`"
-                        % (url, inspect.stack()[1].function)
-                    )
+                    logger.debug("Fetching url: %s . Inside function `%s`" % (url, inspect.stack()[1].function))
                     r = f(*args, **kws)
-                    if (
-                        getattr(r, "status_code", 200) != 200
-                    ):  # in case r is a json dict
+                    if getattr(r, "status_code", 200) != 200:  # in case r is a json dict
                         raise HttpStatusError
                     return r
                 except connection_errors as e:
                     logger.warning("Fails at fetching url: %s. Try again." % url)
+
                     if count == tries - 1:
-                        logger.error(
-                            "Still wrong at fetching url: %s. after %s tries."
-                            % (url, tries)
-                        )
+                        logger.error("Still wrong at fetching url: %s. after %s tries." % (url, tries))
                         logger.error("Fails due to %s" % e.args[0])
                         raise e
+
                     time.sleep(0.5 * count)
 
         return wrapper

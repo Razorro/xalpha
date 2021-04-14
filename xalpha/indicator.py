@@ -9,7 +9,9 @@ from pyecharts.charts import Kline, Line, Bar, Grid
 from pyecharts.commons.utils import JsCode
 from bs4 import BeautifulSoup as bs
 
-from xalpha.cons import line_opts, opendate, yesterdayobj, sqrt_days_in_year, rget
+from xalpha.cons import line_opts, opendate, yesterdayobj, sqrt_days_in_year
+
+import akshare as ak
 
 
 def _upcount(ls):
@@ -34,13 +36,9 @@ class indicator:
     """
 
     def fetch_treasure_bond_rate(self):
-        res = rget('https://cn.investing.com/rates-bonds/china-1-year-bond-yield')
-        if res.status_code != 200:
-            raise Exception('fetch risk free rate failed')
-            return
-
-        soup = bs(res.content, features='lxml')
-        self.riskfree = float(soup.findAll('input')[1].attrs['value']) / 100
+        if getattr(self.__class__, 'riskfree', None) is None:
+            bond_price = ak.bond_zh_us_rate()
+            setattr(self.__class__, 'riskfree', round(bond_price['中国国债收益率5年'].iloc[0]/100, 6))
 
     def bcmkset(self, infoobj, start=None, riskfree=None, name="基金组合"):
         """
@@ -119,9 +117,9 @@ class indicator:
         :returns: float, annualized returns of the price table
         """
         datediff = (price[price["date"] <= date].iloc[-1].date - start).days
-        totreturn = (
-            price[price["date"] <= date].iloc[-1].totvalue - price.iloc[0].totvalue
-        ) / price.iloc[0].totvalue
+        startTotvalue = price[lambda x: x['date'] == start]['totvalue'].iloc[0]
+        totreturn = (price[price["date"] <= date].iloc[-1].totvalue - startTotvalue) / startTotvalue
+
         return round((1 + totreturn) ** (365 / datediff) - 1, 4)
 
     def total_annualized_returns(self, date=yesterdayobj()):
@@ -202,9 +200,12 @@ class indicator:
     def benchmark_volatility(self, date=yesterdayobj()):
         return indicator.volatility(self.bmprice, date)
 
-    def sharpe(self, date=yesterdayobj()):
-        rp = self.total_annualized_returns(date)
-        return (rp - self.riskfree) / self.algorithm_volatility(date)
+    def sharpe(self, start=None, end=yesterdayobj()):
+        if start is None:
+            start = self.start
+
+        rp = indicator.annualized_returns(self.price, start, end)
+        return (rp - self.riskfree) / self.algorithm_volatility(end)
 
     def information_ratio(self, date=yesterdayobj()):
         rp = self.total_annualized_returns(date)

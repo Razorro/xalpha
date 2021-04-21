@@ -154,6 +154,7 @@ def PEBHistory(code, start=None, end=None):
     :param end: str, 仅限于 debug，强烈不建议设定，默认到昨天
     :return: some object of PEBHistory class
     """
+    code = code.upper()
     if code.startswith("SH000") or code.startswith("SZ399"):
         return IndexPEBHistory(code, start, end)
     elif code.startswith("F"):

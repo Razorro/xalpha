@@ -27,9 +27,6 @@ from scipy import optimize
 from xalpha import __path__
 from .exceptions import HttpStatusError
 
-import akshare as ak
-ak.bond_zh_us_rate()
-
 logger = logging.getLogger(__name__)
 
 # date obj of today

@@ -9,9 +9,7 @@ from pyecharts.charts import Kline, Line, Bar, Grid
 from pyecharts.commons.utils import JsCode
 from bs4 import BeautifulSoup as bs
 
-from xalpha.cons import line_opts, opendate, yesterdayobj, sqrt_days_in_year
-
-import akshare as ak
+from xalpha.cons import line_opts, opendate, yesterdayobj, sqrt_days_in_year, rget
 
 
 def _upcount(ls):
@@ -37,8 +35,20 @@ class indicator:
 
     def fetch_treasure_bond_rate(self):
         if getattr(self.__class__, 'riskfree', None) is None:
-            bond_price = ak.bond_zh_us_rate()
-            setattr(self.__class__, 'riskfree', round(bond_price['中国国债收益率5年'].iloc[0]/100, 6))
+            r = rget('http://yield.chinabond.com.cn/cbweb-czb-web/czb/moreInfo')
+            if r.status_code != 200:
+                raise Exception('fetch treasure bond rate failed')
+            else:
+                soup = bs(r.content, 'lxml')
+                ref = '5年'
+                index = 0
+                for label in soup.findAll('td'):
+                    if label.string is not None and label.string == ref:
+                        break
+                    index += 1
+
+                # print(f'{ref} 国债收益率: {soup.findAll("td")[index+1].string}')
+                setattr(self.__class__, 'riskfree', round(float(soup.findAll("td")[index+1].string)/100, 6))
 
     def bcmkset(self, infoobj, start=None, riskfree=None, name="基金组合"):
         """
@@ -54,12 +64,12 @@ class indicator:
             consistent with the interest parameter when instanciate cashinfo() class
         """
         self._pricegenerate(name)
+
         if start is None:
             self.start = self.price.iloc[0].date
         elif isinstance(start, str):
-            self.start = pd.to_datetime(
-                start, format="%Y-%m-%d"
-            )
+            self.start = pd.to_datetime(start, format="%Y-%m-%d")
+
         self.benchmark = infoobj
 
         if riskfree is not None:
@@ -69,8 +79,6 @@ class indicator:
         self.price = self.price[self.price["date"] >= self.start]
         self.bmprice = self.bmprice[self.bmprice["date"].isin(self.price["date"])]
         self.price = self.price[self.price["date"].isin(self.bmprice["date"])]
-
-    # the price data is removed from the infoobj before start date
 
     def _pricegenerate(self, name):
         """
